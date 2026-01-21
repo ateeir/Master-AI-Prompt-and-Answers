@@ -72,12 +72,22 @@ const PromptInput: React.FC<PromptInputProps> = ({
   const [isRefining, setIsRefining] = useState(false);
   const [isSelectorOpen, setIsSelectorOpen] = useState(false);
   const [isTemplatesOpen, setIsTemplatesOpen] = useState(false);
-  const [selectedModels, setSelectedModels] = useState<Set<string>>(new Set(['ChatGPT', 'Claude', 'Gemini', 'Perplexity']));
+  // Default to all standard models defined in AIModelType
+  const [selectedModels, setSelectedModels] = useState<Set<string>>(new Set(Object.values(AIModelType)));
+  const [hasInitializedWithCustom, setHasInitializedWithCustom] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [customModelName, setCustomModelName] = useState('');
   
   const dropdownRef = useRef<HTMLDivElement>(null);
   const templatesRef = useRef<HTMLDivElement>(null);
+
+  // Effect to select all available models (including custom ones from localStorage) on initial load
+  useEffect(() => {
+    if (!hasInitializedWithCustom && availableModels.length > 0) {
+      setSelectedModels(new Set(availableModels));
+      setHasInitializedWithCustom(true);
+    }
+  }, [availableModels, hasInitializedWithCustom]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {

@@ -67,29 +67,44 @@ const App: React.FC = () => {
 
     const currentResults: ModelResult[] = [];
 
-    // Trigger all requests in parallel
-    const promises = selectedModels.map(async (modelId) => {
-      try {
-        const result = await generateSingleModelOutput(input, modelId);
-        setResults(prev => [...prev, result]);
-        currentResults.push(result);
-      } catch (err) {
-        console.error(`Error generating for ${modelId}:`, err);
-        // We could add a "failed" state to results here
-      } finally {
-        setPendingModels(prev => prev.filter(m => m !== modelId));
-      }
-    });
+    // To respect rate limits, we process in small chunks with a slight delay
+    const CHUNK_SIZE = 2; // Process 2 models at a time
+    const DELAY_BETWEEN_CHUNKS = 1500; // 1.5 second delay between batches
 
-    // Wait for all to finish for history purposes
-    await Promise.all(promises);
+    for (let i = 0; i < selectedModels.length; i += CHUNK_SIZE) {
+      const chunk = selectedModels.slice(i, i + CHUNK_SIZE);
+      
+      // Map each model in chunk to its own promise
+      const chunkPromises = chunk.map(async (modelId) => {
+        try {
+          const result = await generateSingleModelOutput(input, modelId);
+          setResults(prev => [...prev, result]);
+          currentResults.push(result);
+        } catch (err: any) {
+          console.error(`Error generating for ${modelId}:`, err);
+          // Only show top-level error if it's not a single-model failure
+          if (selectedModels.length === 1) {
+            setError(`Failed to generate for ${modelId}. Rate limit exceeded or API error.`);
+          }
+        } finally {
+          setPendingModels(prev => prev.filter(m => m !== modelId));
+        }
+      });
+
+      await Promise.all(chunkPromises);
+
+      // Add a delay before the next chunk, but not after the last one
+      if (i + CHUNK_SIZE < selectedModels.length) {
+        await new Promise(resolve => setTimeout(resolve, DELAY_BETWEEN_CHUNKS));
+      }
+    }
     
     if (currentResults.length > 0) {
       const newEntry: HistoryEntry = {
         id: crypto.randomUUID(),
         timestamp: Date.now(),
         input: input,
-        results: currentResults
+        results: [...currentResults] // Copy to ensure no mutation issues
       };
       setHistory(prev => [newEntry, ...prev].slice(0, 50));
     }
@@ -105,7 +120,7 @@ const App: React.FC = () => {
       window.scrollTo({ top: 0, behavior: 'smooth' });
     } catch (err) {
       console.error(err);
-      setError('Failed to refine prompt. Please try again.');
+      setError('Failed to refine prompt. Rate limit exceeded or API error.');
     }
   }, [input]);
 
@@ -155,7 +170,7 @@ const App: React.FC = () => {
           </section>
 
           {error && (
-            <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl flex items-center gap-2">
+            <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl flex items-center gap-2 animate-in fade-in slide-in-from-top-1">
               <Info className="w-5 h-5" />
               {error}
             </div>
@@ -185,7 +200,7 @@ const App: React.FC = () => {
                 </div>
                 <div className="flex items-center gap-3">
                    {pendingModels.length > 0 && (
-                     <div className="flex items-center gap-2 bg-indigo-50 text-indigo-600 px-3 py-1 rounded-full text-xs font-bold animate-pulse">
+                     <div className="flex items-center gap-2 bg-indigo-50 text-indigo-600 px-3 py-1 rounded-full text-[10px] font-bold animate-pulse">
                         <div className="w-2 h-2 bg-indigo-600 rounded-full animate-bounce" />
                         {pendingModels.length} models processing...
                      </div>
